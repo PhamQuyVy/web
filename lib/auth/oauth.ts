@@ -14,7 +14,13 @@ type OAuthProfile = {
 };
 
 export function getOAuthBaseUrl(request: Request) {
-  return process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
+  const requestOrigin = new URL(request.url).origin;
+
+  if (process.env.NODE_ENV === "production") {
+    return requestOrigin;
+  }
+
+  return process.env.NEXT_PUBLIC_APP_URL || requestOrigin;
 }
 
 export function getOAuthStateCookieName(provider: OAuthProvider) {
