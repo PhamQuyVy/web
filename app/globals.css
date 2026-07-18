@@ -1,26 +1,78 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f8f7f3;
+  --foreground: #0f172a;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-sans: Arial, Helvetica, sans-serif;
+  --font-mono: "Courier New", Courier, monospace;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .rounded-lg.border,
+  .rounded-md.border {
+    transition:
+      transform 160ms ease,
+      border-color 160ms ease,
+      box-shadow 160ms ease,
+      background-color 160ms ease,
+      color 160ms ease;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  article.rounded-lg.border:hover,
+  button.rounded-lg.border:hover,
+  a.rounded-lg.border:hover,
+  button.rounded-md.border:hover,
+  a.rounded-md.border:hover {
+    transform: translateY(-2px);
+    border-color: #fb923c;
+    box-shadow: 0 10px 20px rgb(15 23 42 / 0.12);
+  }
+}
+
+.rounded-lg.border:focus-within,
+.rounded-md.border:focus-within {
+  transform: translateY(-5px);
+  border-color: #38bdf8;
+  background-image: linear-gradient(90deg, rgb(240 249 255 / 0.96), rgb(255 255 255 / 0.98));
+  box-shadow:
+    0 0 0 3px rgb(56 189 248 / 0.18),
+    0 16px 32px rgb(15 23 42 / 0.14);
+  z-index: 5;
+}
+
+button.rounded-lg.border:focus-visible,
+a.rounded-lg.border:focus-visible,
+button.rounded-md.border:focus-visible,
+a.rounded-md.border:focus-visible {
+  transform: translateY(-3px);
+  border-color: #38bdf8;
+  outline: none;
+  box-shadow:
+    0 0 0 3px rgb(56 189 248 / 0.2),
+    0 12px 24px rgb(15 23 42 / 0.14);
+}
+
+button.rounded-lg.border:active,
+a.rounded-lg.border:active,
+button.rounded-md.border:active,
+a.rounded-md.border:active {
+  transform: translateY(0);
+  box-shadow: 0 4px 10px rgb(15 23 42 / 0.12);
 }
