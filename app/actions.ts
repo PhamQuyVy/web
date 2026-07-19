@@ -33,16 +33,38 @@ async function getRequestMeta() {
   };
 }
 
+function isSafeStudyActivityId(activityId: string) {
+  const value = activityId.trim();
+  const allowedExactIds = new Set(["grammar", "vocabulary", "writing", "speaking", "pinyin"]);
+  const allowedPrefixes = [
+    "lesson:",
+    "vocabulary:",
+    "listen:word:",
+    "listen:sentence:",
+    "writing:",
+    "pinyin:",
+    "speaking:",
+  ];
+
+  if (!value || value.length > 120 || /[\u0000-\u001f\u007f]/.test(value)) {
+    return false;
+  }
+
+  return allowedExactIds.has(value) || allowedPrefixes.some((prefix) => value.startsWith(prefix));
+}
+
 export async function registerAction(_state: AuthState, formData: FormData): Promise<AuthState> {
   const name = textValue(formData, "name");
   const email = textValue(formData, "email").toLowerCase();
   const phone = textValue(formData, "phone");
   const address = textValue(formData, "address");
   const password = textValue(formData, "password");
+  const requestMeta = await getRequestMeta();
   const registerLimit = checkRateLimit(`register:${email || "unknown"}`, 5, 15 * 60 * 1000);
+  const registerIpLimit = checkRateLimit(`register-ip:${requestMeta.ipAddress || "unknown"}`, 20, 15 * 60 * 1000);
 
-  if (!registerLimit.allowed) {
-    return { message: `Thử lại sau ${registerLimit.retryAfterSeconds} giây.` };
+  if (!registerLimit.allowed || !registerIpLimit.allowed) {
+    return { message: `Thử lại sau ${Math.max(registerLimit.retryAfterSeconds, registerIpLimit.retryAfterSeconds)} giây.` };
   }
 
   if (name.length < 2 || !email.includes("@")) {
@@ -75,7 +97,7 @@ export async function registerAction(_state: AuthState, formData: FormData): Pro
   await recordUserLogin({
     userId: user.id,
     provider: "email",
-    ...(await getRequestMeta()),
+    ...requestMeta,
   });
   redirect("/");
 }
@@ -83,10 +105,12 @@ export async function registerAction(_state: AuthState, formData: FormData): Pro
 export async function loginAction(_state: AuthState, formData: FormData): Promise<AuthState> {
   const email = textValue(formData, "email").toLowerCase();
   const password = textValue(formData, "password");
+  const requestMeta = await getRequestMeta();
   const loginLimit = checkRateLimit(`login:${email || "unknown"}`, 8, 15 * 60 * 1000);
+  const loginIpLimit = checkRateLimit(`login-ip:${requestMeta.ipAddress || "unknown"}`, 40, 15 * 60 * 1000);
 
-  if (!loginLimit.allowed) {
-    return { message: `Thử lại sau ${loginLimit.retryAfterSeconds} giây.` };
+  if (!loginLimit.allowed || !loginIpLimit.allowed) {
+    return { message: `Thử lại sau ${Math.max(loginLimit.retryAfterSeconds, loginIpLimit.retryAfterSeconds)} giây.` };
   }
 
   const user = await findUserByEmail(email);
@@ -100,7 +124,7 @@ export async function loginAction(_state: AuthState, formData: FormData): Promis
   await recordUserLogin({
     userId: user.id,
     provider: "email",
-    ...(await getRequestMeta()),
+    ...requestMeta,
   });
   redirect("/");
 }
@@ -147,6 +171,10 @@ export async function recordStudyActivityAction(activityId: string) {
     return;
   }
 
-  await recordStudyActivity(user.id, activityId);
+  if (!isSafeStudyActivityId(activityId)) {
+    return;
+  }
+
+  await recordStudyActivity(user.id, activityId.trim());
   revalidatePath("/dashboard");
 }

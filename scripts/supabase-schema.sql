@@ -142,6 +142,17 @@ alter table sessions enable row level security;
 alter table user_progress enable row level security;
 alter table user_logins enable row level security;
 
+alter table users force row level security;
+alter table sessions force row level security;
+alter table user_progress force row level security;
+alter table user_logins force row level security;
+
+revoke all on users from public;
+revoke all on sessions from public;
+revoke all on user_progress from public;
+revoke all on user_logins from public;
+revoke all on sequence user_logins_id_seq from public;
+
 revoke all on users from anon, authenticated;
 revoke all on sessions from anon, authenticated;
 revoke all on user_progress from anon, authenticated;

@@ -14,13 +14,14 @@ type OAuthProfile = {
 };
 
 export function getOAuthBaseUrl(request: Request) {
+  const configuredAppUrl = process.env.NEXT_PUBLIC_APP_URL;
   const requestOrigin = new URL(request.url).origin;
 
-  if (process.env.NODE_ENV === "production") {
-    return requestOrigin;
+  if (configuredAppUrl) {
+    return configuredAppUrl;
   }
 
-  return process.env.NEXT_PUBLIC_APP_URL || requestOrigin;
+  return requestOrigin;
 }
 
 export function getOAuthStateCookieName(provider: OAuthProvider) {

@@ -19,6 +19,16 @@ where schemaname = 'public'
 order by tablename, policyname;
 
 select
+  grantee,
+  table_name,
+  privilege_type
+from information_schema.role_table_grants
+where table_schema = 'public'
+  and table_name in ('users', 'sessions', 'user_progress', 'user_logins')
+  and grantee in ('public', 'anon', 'authenticated')
+order by grantee, table_name, privilege_type;
+
+select
   table_name,
   constraint_name,
   constraint_type
