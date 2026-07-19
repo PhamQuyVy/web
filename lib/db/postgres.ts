@@ -8,7 +8,21 @@ function optionalEnv(name: string) {
 }
 
 function getPostgresConnectionString() {
-  return optionalEnv("POSTGRES_URL") || optionalEnv("DATABASE_URL");
+  const rawUrl =
+    optionalEnv("POSTGRES_URL") ||
+    optionalEnv("DATABASE_URL");
+
+  if (!rawUrl) {
+    return "";
+  }
+
+  const url = new URL(rawUrl);
+  url.searchParams.delete("sslmode");
+  url.searchParams.delete("sslcert");
+  url.searchParams.delete("sslkey");
+  url.searchParams.delete("sslrootcert");
+
+  return url.toString();
 }
 
 export function assertProductionPostgresConfig() {
