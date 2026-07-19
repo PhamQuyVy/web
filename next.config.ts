@@ -1,6 +1,15 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  experimental: {
+    serverActions: {
+      allowedOrigins: [
+        "localhost:3000",
+        "web-ctue.vercel.app",
+      ],
+      bodySizeLimit: "500kb",
+    },
+  },
   async headers() {
     return [
       {
