@@ -2,6 +2,7 @@
 import { ProgressChart } from "@/components/progress/progress-chart";
 import { SiteHeader } from "@/components/layout/site-header";
 import { requireUser } from "@/lib/auth";
+import { isAdminEmail } from "@/lib/auth/admin";
 import { getLessons, getUserProgress, getVocabulary } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -81,6 +82,7 @@ function getActivityLabel(activityId: string) {
 
 export default async function DashboardPage() {
   const user = await requireUser();
+  const canManageUsers = isAdminEmail(user.email);
   const [lessons, vocabulary, progress] = await Promise.all([getLessons(), getVocabulary(), getUserProgress(user.id)]);
   const activityEntries = Object.entries(progress.lessonCompletions).filter(([key]) => key.startsWith("activity:"));
   const learnedLessonIds = new Set(progress.completedLessonIds);
@@ -176,12 +178,14 @@ export default async function DashboardPage() {
             <p className="text-sm font-medium uppercase tracking-wide text-slate-500">Tài khoản</p>
             <p className="mt-2 truncate text-lg font-semibold">{user.name}</p>
             <p className="mt-1 truncate text-sm text-slate-600">{user.email}</p>
-            <Link
-              className="mt-4 inline-flex h-10 items-center rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold hover:bg-stone-50"
-              href="/admin/users"
-            >
-              Quản lý người dùng
-            </Link>
+            {canManageUsers ? (
+              <Link
+                className="mt-4 inline-flex h-10 items-center rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold hover:bg-stone-50"
+                href="/admin/users"
+              >
+                Quản lý người dùng
+              </Link>
+            ) : null}
           </aside>
         </div>
 

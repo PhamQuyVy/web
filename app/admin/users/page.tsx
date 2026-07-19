@@ -1,6 +1,6 @@
 ﻿import Link from "next/link";
 import { SiteHeader } from "@/components/layout/site-header";
-import { requireUser } from "@/lib/auth";
+import { requireAdminUser } from "@/lib/auth/admin";
 import { getManagedUsers } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +14,7 @@ function formatDate(value: string | null) {
 }
 
 export default async function AdminUsersPage() {
-  await requireUser();
+  await requireAdminUser();
   const users = await getManagedUsers();
   const totalToday = users.reduce((sum, user) => sum + user.loginsToday, 0);
   const totalThisMonth = users.reduce((sum, user) => sum + user.loginsThisMonth, 0);
