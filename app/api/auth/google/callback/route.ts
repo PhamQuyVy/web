@@ -3,11 +3,14 @@ import {
   getOAuthBaseUrl,
   getOAuthErrorRedirect,
   getOAuthStateCookieName,
+  OAuthAccountLinkRequiredError,
   signInOAuthProfile,
 } from "@/lib/auth/oauth";
 import { secureRedirect, secureResponse } from "@/lib/security/api-security";
 import { createSessionCookie } from "@/lib/auth";
 import { recordUserLogin } from "@/lib/db";
+import { checkRateLimit } from "@/lib/security/rate-limit";
+import { getTrustedClientIp } from "@/lib/security/request-meta";
 
 export const dynamic = "force-dynamic";
 
@@ -23,10 +26,16 @@ type GoogleUserInfo = {
   name?: string;
   given_name?: string;
   picture?: string;
+  email_verified?: boolean;
 };
 
 export async function GET(request: NextRequest) {
   try {
+    const clientIp = getTrustedClientIp(request.headers) || "unknown";
+    const callbackLimit = await checkRateLimit(`oauth-callback:google:${clientIp}`, 20, 15 * 60 * 1000);
+    if (!callbackLimit.allowed) {
+      return secureRedirect(getOAuthErrorRedirect(request, "too-many-oauth-attempts"));
+    }
     const code = request.nextUrl.searchParams.get("code");
     const state = request.nextUrl.searchParams.get("state");
     const storedState = request.cookies.get(getOAuthStateCookieName("google"))?.value;
@@ -60,7 +69,7 @@ export async function GET(request: NextRequest) {
     });
     const profile = (await profileResponse.json()) as GoogleUserInfo;
 
-    if (!profileResponse.ok || !profile.email) {
+    if (!profileResponse.ok || !profile.email || profile.email_verified !== true) {
       return secureRedirect(getOAuthErrorRedirect(request, "google-profile-failed"));
     }
 
@@ -71,12 +80,13 @@ export async function GET(request: NextRequest) {
       provider: "google",
       providerAccountId: profile.sub || profile.email,
       refreshToken: token.refresh_token,
+      emailVerified: true,
     });
     const sessionCookie = await createSessionCookie(user.id);
     await recordUserLogin({
       userId: user.id,
       provider: "google",
-      ipAddress: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+      ipAddress: getTrustedClientIp(request.headers),
       userAgent: request.headers.get("user-agent"),
     });
 
@@ -85,6 +95,9 @@ export async function GET(request: NextRequest) {
     response.cookies.delete(getOAuthStateCookieName("google"));
     return secureResponse(response);
   } catch (error) {
+    if (error instanceof OAuthAccountLinkRequiredError) {
+      return secureRedirect(getOAuthErrorRedirect(request, "oauth-account-exists"));
+    }
     console.error("Google OAuth callback error:", error);
     return secureRedirect(getOAuthErrorRedirect(request, "google-callback-failed"));
   }

@@ -7,6 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "vitest run",
+    "db:migrate-postgres": "node --env-file=.env.local scripts/run-postgres-schema.mjs",
+    "db:verify-security": "node --env-file=.env.local scripts/verify-postgres-security.mjs",
     "db:migrate-json": "node scripts/migrate-json-users-to-sql.mjs",
     "db:encrypt-users": "node scripts/encrypt-sql-users.mjs"
   },
@@ -29,6 +32,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.10"
   }
 }

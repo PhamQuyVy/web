@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useRef, useState } from "react";
+import { analyzeTranscript } from "@/lib/learning/transcript-score";
 import { SpeakButton } from "./speak-button";
 
 type DialogueLine = {
@@ -44,47 +45,12 @@ type SpeechRecognitionWindow = Window &
     webkitSpeechRecognition?: SpeechRecognitionConstructor;
   };
 
-function normalizeText(text: string) {
-  return text.replace(/[。？！?!，,、；;\s]/g, "").toLowerCase();
-}
-
-function analyzePronunciation(targetText: string, spokenText: string) {
-  const target = Array.from(normalizeText(targetText));
-  const spoken = Array.from(normalizeText(spokenText));
-
-  if (!spoken.length) {
-    return {
-      score: 0,
-      missing: target.slice(0, 8),
-      extra: [] as string[],
-      exact: false,
-    };
-  }
-
-  const targetSet = new Set(target);
-  const spokenSet = new Set(spoken);
-  const missing = [...targetSet].filter((char) => !spokenSet.has(char));
-  const extra = [...spokenSet].filter((char) => !targetSet.has(char));
-  const orderMatches = target.filter((char, index) => spoken[index] === char).length;
-  const coverage = [...targetSet].filter((char) => spokenSet.has(char)).length / Math.max(targetSet.size, 1);
-  const orderScore = orderMatches / Math.max(target.length, 1);
-  const lengthScore = Math.max(0, 1 - Math.abs(target.length - spoken.length) / Math.max(target.length, 1));
-  const score = Math.round((coverage * 0.58 + orderScore * 0.28 + lengthScore * 0.14) * 100);
-
-  return {
-    score,
-    missing: missing.slice(0, 8),
-    extra: extra.slice(0, 8),
-    exact: normalizeText(targetText) === normalizeText(spokenText),
-  };
-}
-
 function formatChars(chars: string[]) {
   return chars.length ? chars.join("、") : "";
 }
 
 function getCoachFeedback(line: DialogueLine, transcript: string) {
-  const analysis = analyzePronunciation(line.hanzi, transcript);
+  const analysis = analyzeTranscript(line.hanzi, transcript, { coverage: 0.58, order: 0.28, length: 0.14 });
   const missing = formatChars(analysis.missing);
   const extra = formatChars(analysis.extra);
 
@@ -227,7 +193,7 @@ export function DialogueLinePractice({ dialogueId, lines }: DialogueLinePractice
                         : "border-red-200 bg-red-50 text-red-900"
                   }`}
                 >
-                  <p className="font-semibold">Agent phát âm: {feedback.title}</p>
+                  <p className="font-semibold">Kiểm tra câu máy nghe được: {feedback.title}</p>
                   <p className="mt-1">{feedback.body}</p>
                 </div>
               ) : null}

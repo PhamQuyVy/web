@@ -183,4 +183,3 @@ SET password_hash = NULL,
 WHERE provider IN ('google', 'facebook')
   AND password_hash IS NOT NULL;
 GO
-

@@ -3,7 +3,7 @@ select
   relrowsecurity as rls_enabled,
   relforcerowsecurity as rls_forced
 from pg_class
-where relname in ('users', 'sessions', 'user_progress', 'user_logins')
+where relname in ('users', 'sessions', 'user_progress', 'user_logins', 'user_identities', 'rate_limit_buckets')
 order by relname;
 
 select
@@ -15,7 +15,7 @@ select
   with_check
 from pg_policies
 where schemaname = 'public'
-  and tablename in ('users', 'sessions', 'user_progress', 'user_logins')
+  and tablename in ('users', 'sessions', 'user_progress', 'user_logins', 'user_identities', 'rate_limit_buckets')
 order by tablename, policyname;
 
 select
@@ -24,7 +24,7 @@ select
   privilege_type
 from information_schema.role_table_grants
 where table_schema = 'public'
-  and table_name in ('users', 'sessions', 'user_progress', 'user_logins')
+  and table_name in ('users', 'sessions', 'user_progress', 'user_logins', 'user_identities', 'rate_limit_buckets')
   and grantee in ('public', 'anon', 'authenticated')
 order by grantee, table_name, privilege_type;
 
@@ -34,12 +34,12 @@ select
   constraint_type
 from information_schema.table_constraints
 where table_schema = 'public'
-  and table_name in ('users', 'sessions', 'user_progress', 'user_logins')
+  and table_name in ('users', 'sessions', 'user_progress', 'user_logins', 'user_identities', 'rate_limit_buckets')
 order by table_name, constraint_name;
 
 select
   id,
-  email,
+  encode(digest(lower(email), 'sha256'), 'hex') as email_fingerprint,
   provider,
   case
     when password_hash is null then 'NULL'

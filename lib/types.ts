@@ -143,6 +143,7 @@ export type User = {
   email: string;
   passwordHash: string;
   createdAt: string;
+  role: "USER" | "MODERATOR" | "ADMIN";
 };
 
 export type ManagedUser = {
@@ -179,7 +180,7 @@ export type UserProgress = {
   quizAttempts: QuizAttempt[];
 };
 
-export type AppDb = {
+export type ContentDb = {
   skills: Skill[];
   roadmap: RoadmapStep[];
   vocabulary: VocabularyItem[];
@@ -191,7 +192,12 @@ export type AppDb = {
   listeningPractice: ListeningPractice[];
   readingPractice: ReadingPractice[];
   writingPrompts: WritingPrompt[];
+};
+
+export type RuntimeDb = {
   users: User[];
   sessions: Session[];
   progress: UserProgress[];
 };
+
+export type AppDb = ContentDb & RuntimeDb;

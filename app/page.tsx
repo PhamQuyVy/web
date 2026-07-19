@@ -29,7 +29,7 @@ const learningFlow = [
   },
   {
     title: "5. Luyện nói",
-    text: "Nghe từng câu hội thoại, đọc theo và nhận đánh giá phát âm.",
+    text: "Nghe từng câu hội thoại, đọc theo và kiểm tra câu máy nhận diện được.",
     href: "/speaking",
   },
   {

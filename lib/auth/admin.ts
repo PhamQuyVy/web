@@ -10,7 +10,7 @@ function getAdminEmails() {
     .filter(Boolean);
 }
 
-export function isAdminEmail(email: string) {
+function isBootstrapAdminEmail(email: string) {
   const adminEmails = getAdminEmails();
   if (adminEmails.length === 0) {
     return process.env.NODE_ENV !== "production";
@@ -19,9 +19,13 @@ export function isAdminEmail(email: string) {
   return adminEmails.includes(email.trim().toLowerCase());
 }
 
+export function isAdminUser(user: { email: string; role: string }) {
+  return user.role === "ADMIN" || isBootstrapAdminEmail(user.email);
+}
+
 export async function requireAdminUser() {
   const user = await requireUser();
-  if (!isAdminEmail(user.email)) {
+  if (!isAdminUser(user)) {
     notFound();
   }
 

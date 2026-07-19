@@ -1,36 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 汉语学堂
 
-## Getting Started
+Ứng dụng học tiếng Trung bằng Next.js 16, PostgreSQL/Supabase và OAuth Google/Facebook.
 
-First, run the development server:
+## Chạy cục bộ
+
+1. Sao chép `.env.example` thành `.env.local` và điền biến môi trường.
+2. Chạy schema PostgreSQL bằng `npm run db:migrate-postgres`.
+3. Chạy `npm run dev`, sau đó mở `http://localhost:3000`.
+
+## Kiểm tra
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run lint
+npm run test
+npm run build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Bảo mật dữ liệu
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- Mật khẩu email được băm bằng Argon2id; mật khẩu cũ được nâng cấp sau lần đăng nhập hợp lệ.
+- Google/Facebook không lưu mật khẩu nhà cung cấp.
+- Session token chỉ nằm trong cookie `HttpOnly`, `Secure`, `SameSite=Lax`; cơ sở dữ liệu chỉ lưu SHA-256 của token.
+- Số điện thoại, địa chỉ và OAuth refresh token được mã hóa AES-256-GCM.
+- PostgreSQL là kho dữ liệu runtime duy nhất trong production. JSON runtime chỉ dành cho local development và bị Git bỏ qua.
+- Các action nhạy cảm dùng rate limit phân tán trong PostgreSQL; Proxy bổ sung kiểm tra origin, kích thước, method và giới hạn biên.
+- Các bảng tài khoản, phiên, tiến độ, đăng nhập, OAuth identity và rate limit bật và ép buộc RLS.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Không đặt secret trong biến bắt đầu bằng `NEXT_PUBLIC_`. Sau khi thay biến môi trường trên Vercel, cần redeploy production.
 
-## Learn More
+## Supabase
 
-To learn more about Next.js, take a look at the following resources:
+Production nên dùng TLS xác minh chứng chỉ:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```env
+POSTGRES_SSL=true
+POSTGRES_REJECT_UNAUTHORIZED=true
+POSTGRES_CA_CERT=-----BEGIN CERTIFICATE-----...-----END CERTIFICATE-----
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Chạy `scripts/supabase-security-check.sql` trong Supabase SQL Editor để kiểm tra RLS, quyền bảng và trạng thái mã hóa mà không hiển thị email thô.
 
-## Deploy on Vercel
+## Triển khai
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Vercel tự triển khai nhánh `master`. Cấu hình ít nhất:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `NEXT_PUBLIC_APP_URL`
+- `POSTGRES_URL`
+- `POSTGRES_SSL`
+- `POSTGRES_REJECT_UNAUTHORIZED`
+- `POSTGRES_CA_CERT`
+- `APP_ENCRYPTION_KEY`
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
+- `ALLOWED_ORIGINS`
+
+Authorized redirect URI của Google phải là `${NEXT_PUBLIC_APP_URL}/api/auth/google/callback`.

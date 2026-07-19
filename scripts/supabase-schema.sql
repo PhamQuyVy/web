@@ -16,8 +16,31 @@ create table if not exists users (
   updated_at timestamptz not null default now()
 );
 
+alter table users
+  add column if not exists role text not null default 'USER';
+
 create index if not exists ix_users_provider_account
   on users(provider, provider_account_id);
+
+create table if not exists user_identities (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  provider text not null,
+  provider_account_id text not null,
+  provider_email text,
+  email_verified boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (provider, provider_account_id),
+  unique (user_id, provider)
+);
+
+insert into user_identities (user_id, provider, provider_account_id, provider_email, email_verified)
+select id, provider, provider_account_id, email, true
+from users
+where provider in ('google', 'facebook')
+  and provider_account_id is not null
+on conflict (provider, provider_account_id) do nothing;
 
 create table if not exists sessions (
   id char(64) primary key,
@@ -51,6 +74,15 @@ create index if not exists ix_user_logins_user_id_logged_in_at
 create index if not exists ix_user_logins_logged_in_at
   on user_logins(logged_in_at desc);
 
+create table if not exists rate_limit_buckets (
+  key_hash char(64) primary key,
+  request_count integer not null default 1,
+  reset_at timestamptz not null
+);
+
+create index if not exists ix_rate_limit_buckets_reset_at
+  on rate_limit_buckets(reset_at);
+
 update users
 set password_hash = null,
     updated_at = now()
@@ -79,6 +111,12 @@ before update on user_progress
 for each row
 execute function set_updated_at();
 
+drop trigger if exists trg_user_identities_updated_at on user_identities;
+create trigger trg_user_identities_updated_at
+before update on user_identities
+for each row
+execute function set_updated_at();
+
 do $$
 begin
   if not exists (
@@ -88,6 +126,24 @@ begin
     alter table users
       add constraint chk_users_provider
       check (provider in ('email', 'google', 'facebook'));
+  end if;
+
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'chk_users_role'
+  ) then
+    alter table users
+      add constraint chk_users_role
+      check (role in ('USER', 'MODERATOR', 'ADMIN'));
+  end if;
+
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'chk_user_identities_provider'
+  ) then
+    alter table user_identities
+      add constraint chk_user_identities_provider
+      check (provider in ('google', 'facebook'));
   end if;
 
   if not exists (
@@ -141,22 +197,30 @@ alter table users enable row level security;
 alter table sessions enable row level security;
 alter table user_progress enable row level security;
 alter table user_logins enable row level security;
+alter table user_identities enable row level security;
+alter table rate_limit_buckets enable row level security;
 
 alter table users force row level security;
 alter table sessions force row level security;
 alter table user_progress force row level security;
 alter table user_logins force row level security;
+alter table user_identities force row level security;
+alter table rate_limit_buckets force row level security;
 
 revoke all on users from public;
 revoke all on sessions from public;
 revoke all on user_progress from public;
 revoke all on user_logins from public;
+revoke all on user_identities from public;
+revoke all on rate_limit_buckets from public;
 revoke all on sequence user_logins_id_seq from public;
 
 revoke all on users from anon, authenticated;
 revoke all on sessions from anon, authenticated;
 revoke all on user_progress from anon, authenticated;
 revoke all on user_logins from anon, authenticated;
+revoke all on user_identities from anon, authenticated;
+revoke all on rate_limit_buckets from anon, authenticated;
 revoke all on sequence user_logins_id_seq from anon, authenticated;
 
 grant select (id, email, full_name, avatar_url, provider, created_at, updated_at)

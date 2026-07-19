@@ -1,10 +1,21 @@
 ﻿import { NextResponse } from "next/server";
 import { secureRedirect, secureResponse } from "@/lib/security/api-security";
 import { getOAuthBaseUrl, getOAuthStateCookieName } from "@/lib/auth/oauth";
+import { checkRateLimit } from "@/lib/security/rate-limit";
+import { getTrustedClientIp } from "@/lib/security/request-meta";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
+  const oauthLimit = await checkRateLimit(
+    `oauth-start:facebook:${getTrustedClientIp(request.headers)}`,
+    20,
+    15 * 60 * 1000,
+  );
+  if (!oauthLimit.allowed) {
+    return secureRedirect(new URL("/register?error=too-many-oauth-attempts", getOAuthBaseUrl(request)));
+  }
+
   const clientId = process.env.FACEBOOK_CLIENT_ID;
 
   if (!clientId) {

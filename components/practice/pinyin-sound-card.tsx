@@ -325,7 +325,7 @@ export function PinyinSoundCard({ sound, sample }: PinyinSoundCardProps) {
             <span className="rounded-full bg-white px-2 py-1 font-bold text-slate-950 shadow-sm">
               Điểm: {feedback.score}/100
             </span>
-            <span className="font-semibold">Agent phát âm: {feedback.title}</span>
+            <span className="font-semibold">Kiểm tra chữ máy nghe được: {feedback.title}</span>
           </div>
           <p className="mt-2 font-serif text-sm text-slate-950">
             Máy nghe được:{" "}

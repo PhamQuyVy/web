@@ -116,7 +116,7 @@ export function PinyinPractice({ listeningQuestions, readingDrills }: PinyinPrac
   const listeningScore = checked ? scoreListening(isCorrect) : null;
   const readingStatus = useMemo(() => {
     if (!readingScore) {
-      return "Nghe mẫu rồi bấm đọc để agent chấm phát âm.";
+      return "Nghe mẫu rồi bấm đọc để kiểm tra chữ máy nhận diện được.";
     }
 
     return `${readingScore.score}/100 - ${readingScore.message}`;
@@ -264,12 +264,12 @@ export function PinyinPractice({ listeningQuestions, readingDrills }: PinyinPrac
             onClick={startRecording}
             type="button"
           >
-            {isRecording ? "Đang nghe..." : "Đọc để chấm"}
+            {isRecording ? "Đang nghe..." : "Đọc để kiểm tra"}
           </button>
         </div>
 
         <div className="mt-4 rounded-md border border-stone-200 bg-stone-50 p-3 text-sm leading-6 text-slate-700">
-          <p className="font-semibold text-slate-950">Agent luyện đọc</p>
+          <p className="font-semibold text-slate-950">Kết quả nhận diện giọng đọc</p>
           <p className="mt-1">{readingStatus}</p>
           {recognizedText ? <p className="mt-1 text-slate-500">Máy nghe được: {recognizedText}</p> : null}
         </div>

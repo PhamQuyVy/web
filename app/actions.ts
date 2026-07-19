@@ -12,9 +12,12 @@ import {
   recordUserLogin,
   recordStudyActivity,
   saveQuizAttempt,
+  updateUserPasswordHash,
 } from "@/lib/db";
+import { needsPasswordRehash } from "@/lib/security/password-hash";
 import { getPasswordPolicyIssues } from "@/lib/security/password-policy";
 import { checkRateLimit, resetRateLimit } from "@/lib/security/rate-limit";
+import { getTrustedClientIp } from "@/lib/security/request-meta";
 
 export type AuthState = {
   message?: string;
@@ -28,7 +31,7 @@ function textValue(formData: FormData, key: string) {
 async function getRequestMeta() {
   const headerStore = await headers();
   return {
-    ipAddress: headerStore.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+    ipAddress: getTrustedClientIp(headerStore),
     userAgent: headerStore.get("user-agent"),
   };
 }
@@ -59,9 +62,12 @@ export async function registerAction(_state: AuthState, formData: FormData): Pro
   const phone = textValue(formData, "phone");
   const address = textValue(formData, "address");
   const password = textValue(formData, "password");
+  const acceptedTerms = textValue(formData, "acceptTerms") === "yes";
   const requestMeta = await getRequestMeta();
-  const registerLimit = checkRateLimit(`register:${email || "unknown"}`, 5, 15 * 60 * 1000);
-  const registerIpLimit = checkRateLimit(`register-ip:${requestMeta.ipAddress || "unknown"}`, 20, 15 * 60 * 1000);
+  const [registerLimit, registerIpLimit] = await Promise.all([
+    checkRateLimit(`register:${email || "unknown"}`, 5, 15 * 60 * 1000),
+    checkRateLimit(`register-ip:${requestMeta.ipAddress || "unknown"}`, 20, 15 * 60 * 1000),
+  ]);
 
   if (!registerLimit.allowed || !registerIpLimit.allowed) {
     return { message: `Thử lại sau ${Math.max(registerLimit.retryAfterSeconds, registerIpLimit.retryAfterSeconds)} giây.` };
@@ -69,6 +75,10 @@ export async function registerAction(_state: AuthState, formData: FormData): Pro
 
   if (name.length < 2 || !email.includes("@")) {
     return { message: "Nhập tên và email hợp lệ." };
+  }
+
+  if (!acceptedTerms) {
+    return { message: "Bạn cần đồng ý với điều khoản và chính sách quyền riêng tư." };
   }
 
   if (!/^[0-9+\s().-]{8,20}$/.test(phone) || address.length < 5) {
@@ -82,7 +92,7 @@ export async function registerAction(_state: AuthState, formData: FormData): Pro
 
   const existingUser = await findUserByEmail(email);
   if (existingUser) {
-    return { message: "Email này đã được đăng ký." };
+    return { message: "Không thể tạo tài khoản với thông tin này. Hãy đăng nhập hoặc dùng email khác." };
   }
 
   const user = await createUser({
@@ -92,7 +102,7 @@ export async function registerAction(_state: AuthState, formData: FormData): Pro
     address,
     passwordHash: await hashPassword(password),
   });
-  resetRateLimit(`register:${email}`);
+  await resetRateLimit(`register:${email}`);
   await startSession(user.id);
   await recordUserLogin({
     userId: user.id,
@@ -106,8 +116,10 @@ export async function loginAction(_state: AuthState, formData: FormData): Promis
   const email = textValue(formData, "email").toLowerCase();
   const password = textValue(formData, "password");
   const requestMeta = await getRequestMeta();
-  const loginLimit = checkRateLimit(`login:${email || "unknown"}`, 8, 15 * 60 * 1000);
-  const loginIpLimit = checkRateLimit(`login-ip:${requestMeta.ipAddress || "unknown"}`, 40, 15 * 60 * 1000);
+  const [loginLimit, loginIpLimit] = await Promise.all([
+    checkRateLimit(`login:${email || "unknown"}`, 8, 15 * 60 * 1000),
+    checkRateLimit(`login-ip:${requestMeta.ipAddress || "unknown"}`, 40, 15 * 60 * 1000),
+  ]);
 
   if (!loginLimit.allowed || !loginIpLimit.allowed) {
     return { message: `Thử lại sau ${Math.max(loginLimit.retryAfterSeconds, loginIpLimit.retryAfterSeconds)} giây.` };
@@ -119,7 +131,11 @@ export async function loginAction(_state: AuthState, formData: FormData): Promis
     return { message: "Email hoặc mật khẩu không đúng." };
   }
 
-  resetRateLimit(`login:${email}`);
+  if (needsPasswordRehash(user.passwordHash)) {
+    await updateUserPasswordHash(user.id, await hashPassword(password));
+  }
+
+  await resetRateLimit(`login:${email}`);
   await startSession(user.id);
   await recordUserLogin({
     userId: user.id,
@@ -150,6 +166,10 @@ export async function completeLessonAction(formData: FormData) {
 
 export async function submitQuizAction(formData: FormData) {
   const user = await requireUser();
+  const quizLimit = await checkRateLimit(`quiz:${user.id}`, 30, 10 * 60 * 1000);
+  if (!quizLimit.allowed) {
+    redirect("/dashboard?error=too-many-quiz-submissions");
+  }
   const lessonId = textValue(formData, "lessonId");
   const lesson = await getLesson(lessonId);
   if (!lesson) {
@@ -172,6 +192,11 @@ export async function recordStudyActivityAction(activityId: string) {
   }
 
   if (!isSafeStudyActivityId(activityId)) {
+    return;
+  }
+
+  const activityLimit = await checkRateLimit(`activity:${user.id}`, 300, 5 * 60 * 1000);
+  if (!activityLimit.allowed) {
     return;
   }
 

@@ -5,9 +5,12 @@ import {
   getOAuthBaseUrl,
   getOAuthErrorRedirect,
   getOAuthStateCookieName,
+  OAuthAccountLinkRequiredError,
   signInOAuthProfile,
 } from "@/lib/auth/oauth";
 import { NextRequest, NextResponse } from "next/server";
+import { checkRateLimit } from "@/lib/security/rate-limit";
+import { getTrustedClientIp } from "@/lib/security/request-meta";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +35,11 @@ type FacebookProfile = {
 
 export async function GET(request: NextRequest) {
   try {
+    const clientIp = getTrustedClientIp(request.headers) || "unknown";
+    const callbackLimit = await checkRateLimit(`oauth-callback:facebook:${clientIp}`, 20, 15 * 60 * 1000);
+    if (!callbackLimit.allowed) {
+      return secureRedirect(getOAuthErrorRedirect(request, "too-many-oauth-attempts"));
+    }
     const code = request.nextUrl.searchParams.get("code");
     const state = request.nextUrl.searchParams.get("state");
     const storedState = request.cookies.get(getOAuthStateCookieName("facebook"))?.value;
@@ -75,12 +83,13 @@ export async function GET(request: NextRequest) {
       provider: "facebook",
       providerAccountId: profile.id || fallbackEmail,
       refreshToken: token.refresh_token,
+      emailVerified: Boolean(profile.email || profile.id),
     });
     const sessionCookie = await createSessionCookie(user.id);
     await recordUserLogin({
       userId: user.id,
       provider: "facebook",
-      ipAddress: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+      ipAddress: getTrustedClientIp(request.headers),
       userAgent: request.headers.get("user-agent"),
     });
 
@@ -89,6 +98,9 @@ export async function GET(request: NextRequest) {
     response.cookies.delete(getOAuthStateCookieName("facebook"));
     return secureResponse(response);
   } catch (error) {
+    if (error instanceof OAuthAccountLinkRequiredError) {
+      return secureRedirect(getOAuthErrorRedirect(request, "oauth-account-exists"));
+    }
     console.error("Facebook OAuth callback error:", error);
     return secureRedirect(getOAuthErrorRedirect(request, "facebook-callback-failed"));
   }

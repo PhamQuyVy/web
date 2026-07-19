@@ -11,6 +11,12 @@ function getPostgresConnectionString() {
   return optionalEnv("POSTGRES_URL") || optionalEnv("DATABASE_URL");
 }
 
+export function assertProductionPostgresConfig() {
+  if (process.env.NODE_ENV === "production" && !getPostgresConnectionString()) {
+    throw new Error("POSTGRES_URL is required in production. JSON and SQL Server fallback are disabled.");
+  }
+}
+
 export function hasPostgresConfig() {
   return Boolean(getPostgresConnectionString());
 }
@@ -28,7 +34,12 @@ export function getPostgresPool() {
 
     global.postgresPool = new Pool({
       connectionString,
-      ssl: optionalEnv("POSTGRES_SSL") === "false" ? false : { rejectUnauthorized: false },
+      ssl:
+        optionalEnv("POSTGRES_SSL") === "false"
+          ? false
+          : optionalEnv("POSTGRES_CA_CERT")
+            ? { ca: optionalEnv("POSTGRES_CA_CERT"), rejectUnauthorized: true }
+            : { rejectUnauthorized: optionalEnv("POSTGRES_REJECT_UNAUTHORIZED") !== "false" },
       max: 10,
       idleTimeoutMillis: 30_000,
     });

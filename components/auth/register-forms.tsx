@@ -19,11 +19,13 @@ const oauthErrors: Record<string, string> = {
   "google-oauth-failed": "Không thể xác thực Gmail. Hãy thử lại.",
   "google-token-failed": "Không lấy được token Gmail.",
   "google-profile-failed": "Không lấy được email từ Gmail.",
-  "google-callback-failed": "Đăng nhập Gmail chưa thành công. Kiểm tra kết nối SQL Server rồi thử lại.",
+  "google-callback-failed": "Đăng nhập Gmail chưa thành công. Vui lòng thử lại sau.",
+  "oauth-account-exists": "Email này đã có tài khoản. Hãy đăng nhập bằng cách cũ trước khi liên kết tài khoản mạng xã hội.",
+  "too-many-oauth-attempts": "Bạn thử đăng nhập quá nhiều lần. Vui lòng chờ rồi thử lại.",
   "facebook-oauth-failed": "Không thể xác thực Facebook. Hãy thử lại.",
   "facebook-token-failed": "Không lấy được token Facebook.",
   "facebook-profile-failed": "Không lấy được email từ Facebook.",
-  "facebook-callback-failed": "Đăng nhập Facebook chưa thành công. Kiểm tra kết nối SQL Server rồi thử lại.",
+  "facebook-callback-failed": "Đăng nhập Facebook chưa thành công. Vui lòng thử lại sau.",
 };
 
 export function RegisterForms() {
@@ -143,6 +145,14 @@ export function RegisterForms() {
         </div>
 
         {registerState.message ? <p className="mt-3 text-sm text-red-700">{registerState.message}</p> : null}
+
+        <label className="mt-4 flex items-start gap-2 text-sm leading-5 text-slate-600">
+          <input className="mt-1" name="acceptTerms" required type="checkbox" value="yes" />
+          <span>
+            Tôi đồng ý với <Link className="font-semibold text-orange-700" href="/terms">điều khoản sử dụng</Link>
+            {" "}và <Link className="font-semibold text-orange-700" href="/privacy">chính sách quyền riêng tư</Link>.
+          </span>
+        </label>
 
         <button
           className="mt-5 h-11 w-full rounded-md bg-orange-600 px-4 font-semibold text-white hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-60"

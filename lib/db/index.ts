@@ -3,20 +3,49 @@
 import { createHash } from "crypto";
 import { promises as fs } from "fs";
 import path from "path";
-import { getPostgresPool, hasPostgresConfig } from "./postgres";
+import { assertProductionPostgresConfig, getPostgresPool, hasPostgresConfig } from "./postgres";
 import { getDbPool, hasSqlServerConfig } from "./sql-server";
+import { calculateQuizScore } from "@/lib/learning/quiz-score";
 import { decryptField, encryptField, getEmailLookup } from "@/lib/security/privacy";
-import type { AppDb, Lesson, ManagedUser, Session, User, UserProgress, VocabularyItem } from "@/lib/types";
+import type { AppDb, ContentDb, Lesson, ManagedUser, RuntimeDb, Session, User, UserProgress, VocabularyItem } from "@/lib/types";
 
-const dbPath = path.join(process.cwd(), "data", "app-db.json");
+const contentDbPath = path.join(process.cwd(), "data", "seed-content.json");
+const localRuntimeDbPath = path.join(process.cwd(), "data", "app-db.local.json");
+
+assertProductionPostgresConfig();
+
+function emptyRuntimeDb(): RuntimeDb {
+  return { users: [], sessions: [], progress: [] };
+}
 
 async function readJsonDb(): Promise<AppDb> {
-  const raw = await fs.readFile(dbPath, "utf8");
-  return JSON.parse(raw) as AppDb;
+  const content = JSON.parse(await fs.readFile(contentDbPath, "utf8")) as ContentDb;
+  let runtime = emptyRuntimeDb();
+
+  if (process.env.NODE_ENV !== "production") {
+    try {
+      runtime = JSON.parse(await fs.readFile(localRuntimeDbPath, "utf8")) as RuntimeDb;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw error;
+      }
+    }
+  }
+
+  return { ...content, ...runtime };
 }
 
 async function writeJsonDb(db: AppDb) {
-  await fs.writeFile(dbPath, `${JSON.stringify(db, null, 2)}\n`, "utf8");
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Runtime JSON storage is disabled in production.");
+  }
+
+  const runtime: RuntimeDb = {
+    users: db.users,
+    sessions: db.sessions,
+    progress: db.progress,
+  };
+  await fs.writeFile(localRuntimeDbPath, `${JSON.stringify(runtime, null, 2)}\n`, "utf8");
 }
 
 function toIsoDate(value: unknown) {
@@ -200,12 +229,17 @@ function sanitizeLessons(db: AppDb) {
 }
 
 function mapSqlUser(row: Record<string, unknown>): User {
+  const rawRole = String(row.role ?? "USER").toUpperCase();
+  const role: User["role"] = ["USER", "MODERATOR", "ADMIN"].includes(rawRole)
+    ? (rawRole as User["role"])
+    : "USER";
   return {
     id: String(row.id),
     name: decryptField(row.full_name),
     email: decryptField(row.email),
     passwordHash: String(row.password_hash ?? ""),
     createdAt: toIsoDate(row.created_at),
+    role,
   };
 }
 
@@ -329,7 +363,7 @@ export async function findUserByEmail(email: string): Promise<User | undefined> 
   if (hasPostgresConfig()) {
     const result = await getPostgresPool().query(
       `
-        SELECT id, email, full_name, password_hash, created_at
+        SELECT id, email, full_name, password_hash, created_at, role
         FROM users
         WHERE email_lookup = $1 OR lower(email) = lower($2)
         LIMIT 1
@@ -365,7 +399,7 @@ export async function findUserById(id: string): Promise<User | undefined> {
   if (hasPostgresConfig()) {
     const result = await getPostgresPool().query(
       `
-        SELECT id, email, full_name, password_hash, created_at
+        SELECT id, email, full_name, password_hash, created_at, role
         FROM users
         WHERE id = $1
         LIMIT 1
@@ -392,6 +426,97 @@ export async function findUserById(id: string): Promise<User | undefined> {
 
   const db = await readJsonDb();
   return db.users.find((user) => user.id === id);
+}
+
+export async function updateUserPasswordHash(userId: string, passwordHash: string) {
+  if (hasPostgresConfig()) {
+    await getPostgresPool().query(
+      `UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2 AND provider = 'email'`,
+      [passwordHash, userId],
+    );
+    return;
+  }
+
+  if (hasSqlServerConfig()) {
+    const pool = await getDbPool();
+    await pool
+      .request()
+      .input("passwordHash", passwordHash)
+      .input("userId", userId)
+      .query(`
+        UPDATE dbo.Users
+        SET password_hash = @passwordHash, updated_at = SYSDATETIME()
+        WHERE id = @userId AND provider = 'email'
+      `);
+    return;
+  }
+
+  const db = await readJsonDb();
+  const user = db.users.find((item) => item.id === userId);
+  if (!user) return;
+  user.passwordHash = passwordHash;
+  await writeJsonDb(db);
+}
+
+export async function findUserByOAuthIdentity(
+  provider: "google" | "facebook",
+  providerAccountId: string,
+): Promise<User | undefined> {
+  if (hasPostgresConfig()) {
+    const result = await getPostgresPool().query(
+      `
+        SELECT u.id, u.email, u.full_name, u.password_hash, u.created_at, u.role
+        FROM user_identities identity
+        JOIN users u ON u.id = identity.user_id
+        WHERE identity.provider = $1 AND identity.provider_account_id = $2
+        LIMIT 1
+      `,
+      [provider, providerAccountId],
+    );
+    return result.rows[0] ? mapSqlUser(result.rows[0]) : undefined;
+  }
+
+  if (hasSqlServerConfig()) {
+    const pool = await getDbPool();
+    const result = await pool
+      .request()
+      .input("provider", provider)
+      .input("providerAccountId", providerAccountId)
+      .query(`
+        SELECT TOP 1 id, email, full_name, password_hash, created_at
+        FROM dbo.Users
+        WHERE provider = @provider AND provider_account_id = @providerAccountId
+      `);
+    return result.recordset[0] ? mapSqlUser(result.recordset[0]) : undefined;
+  }
+
+  return undefined;
+}
+
+export async function createOAuthIdentity(input: {
+  userId: string;
+  provider: "google" | "facebook";
+  providerAccountId: string;
+  providerEmail: string;
+  emailVerified: boolean;
+}) {
+  if (!hasPostgresConfig()) {
+    return;
+  }
+
+  await getPostgresPool().query(
+    `
+      INSERT INTO user_identities (
+        user_id, provider, provider_account_id, provider_email, email_verified
+      )
+      VALUES ($1, $2, $3, $4, $5)
+      ON CONFLICT (provider, provider_account_id) DO UPDATE
+      SET provider_email = EXCLUDED.provider_email,
+          email_verified = EXCLUDED.email_verified,
+          updated_at = now()
+    `,
+    [input.userId, input.provider, input.providerAccountId, input.providerEmail, input.emailVerified],
+  );
 }
 
 export async function createUser(input: {
@@ -421,7 +546,7 @@ export async function createUser(input: {
           oauth_refresh_token_encrypted
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        RETURNING id, email, full_name, password_hash, created_at
+        RETURNING id, email, full_name, password_hash, created_at, role
       `,
       [
         input.email.toLowerCase(),
@@ -501,6 +626,7 @@ export async function createUser(input: {
     email: input.email.toLowerCase(),
     passwordHash: input.passwordHash ?? "",
     createdAt: new Date().toISOString(),
+    role: "USER",
   };
 
   db.users.push(user);
@@ -1053,10 +1179,7 @@ export async function saveQuizAttempt(
     throw new Error("Lesson not found");
   }
 
-  const correct = lesson.quiz.reduce(
-    (score, question) => score + (answers[question.id] === question.answer ? 1 : 0),
-    0,
-  );
+  const correct = calculateQuizScore(lesson.quiz, answers);
   const attempt = {
     lessonId,
     answers,

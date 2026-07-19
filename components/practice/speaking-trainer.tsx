@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { recordStudyActivityAction } from "@/app/actions";
+import { analyzeTranscript } from "@/lib/learning/transcript-score";
 import { SpeakButton } from "./speak-button";
 
 export type SpeakingPrompt = {
@@ -47,51 +48,6 @@ type SpeechRecognitionWindow = Window &
     webkitSpeechRecognition?: SpeechRecognitionConstructor;
   };
 
-function normalizeText(text: string) {
-  return text.replace(/[。？！?!，,、；;\s]/g, "").toLowerCase();
-}
-
-function uniqueCharacters(text: string) {
-  return [...new Set(Array.from(normalizeText(text)))];
-}
-
-function analyzeSpeech(targetText: string, spokenText: string) {
-  const target = normalizeText(targetText);
-  const spoken = normalizeText(spokenText);
-  const targetChars = Array.from(target);
-  const spokenChars = Array.from(spoken);
-
-  if (!spokenChars.length) {
-    return {
-      score: 0,
-      missing: uniqueCharacters(target).slice(0, 8),
-      extra: [] as string[],
-      recognized: [] as string[],
-      lengthGap: targetChars.length,
-      exact: false,
-    };
-  }
-
-  const targetSet = new Set(targetChars);
-  const spokenSet = new Set(spokenChars);
-  const missing = [...targetSet].filter((char) => !spokenSet.has(char));
-  const extra = [...spokenSet].filter((char) => !targetSet.has(char));
-  const recognized = [...targetSet].filter((char) => spokenSet.has(char));
-  const orderMatches = targetChars.filter((char, index) => spokenChars[index] === char).length;
-  const coverage = recognized.length / Math.max(targetSet.size, 1);
-  const orderScore = orderMatches / Math.max(targetChars.length, 1);
-  const score = Math.round((coverage * 0.72 + orderScore * 0.28) * 100);
-
-  return {
-    score,
-    missing: missing.slice(0, 8),
-    extra: extra.slice(0, 8),
-    recognized: recognized.slice(0, 8),
-    lengthGap: targetChars.length - spokenChars.length,
-    exact: spoken === target || spoken.includes(target) || target.includes(spoken),
-  };
-}
-
 function formatChars(chars: string[]) {
   return chars.length ? chars.join("、") : "";
 }
@@ -132,7 +88,7 @@ function comparePrompts(promptA: SpeakingPrompt, promptB: SpeakingPrompt) {
 }
 
 function buildCoachFeedback(prompt: SpeakingPrompt, transcript: string) {
-  const analysis = analyzeSpeech(prompt.hanzi, transcript);
+  const analysis = analyzeTranscript(prompt.hanzi, transcript);
   const missingText = formatChars(analysis.missing);
   const extraText = formatChars(analysis.extra);
   const recognizedText = formatChars(analysis.recognized);
